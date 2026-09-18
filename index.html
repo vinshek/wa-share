@@ -217,10 +217,22 @@
       return;
     }
 
+    // ★ 用 POST：未登入的請求打到 /exec 時，查詢參數會在 Google 的轉址中遺失，
+    //   所以票證要放在 body 裡。content-type 用 text/plain 以避開跨網域預檢請求。
     let data;
     try {
-      const res = await fetch(api + '?wa=1&t=' + encodeURIComponent(t));
-      data = await res.json();
+      const res = await fetch(api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ wa: 1, t: t })
+      });
+      const raw = await res.text();
+      try {
+        data = JSON.parse(raw);
+      } catch (e) {
+        setStatus('Apps Script 回傳的不是 JSON（多半是改了 doPost 之後忘了重新部署新版本）。', true);
+        return;
+      }
     } catch (e) {
       setStatus('連不上 Apps Script：' + e.message
         + '（請確認網頁應用程式的存取權設為「任何人」）', true);
