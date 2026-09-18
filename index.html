@@ -120,7 +120,7 @@
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
-  let pdfBytes = null, baseName = '', files = [], dpiUsed = 0;
+  let pdfBytes = null, baseName = '', asciiBase = '', files = [], dpiUsed = 0;
 
   function setStatus(msg, isErr) {
     const el = $('status');
@@ -135,6 +135,17 @@
     const bin = atob(b64);
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  // 檔名轉純英數：WhatsApp 電腦版顯示中文檔名會變亂碼
+  //   「2026年9月 服務安排表 v3」→「2026-09 Service Schedule v3」
+  function toAscii(name) {
+    const ym = String(name).match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+    const ver = String(name).match(/v\s*(\d+)/i);
+    let out = ym ? (ym[1] + '-' + ('0' + ym[2]).slice(-2)) : '';
+    out += (out ? ' ' : '') + 'Service Schedule';
+    if (ver) out += ' v' + ver[1];
     return out;
   }
 
@@ -167,12 +178,12 @@
       await page.render({ canvasContext: cx, viewport: vp }).promise;
 
       const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.92));
-      const name = pdf.numPages > 1 ? (baseName + '-' + p + '.jpg') : (baseName + '.jpg');
+      const name = pdf.numPages > 1 ? (asciiBase + '-' + p + '.jpg') : (asciiBase + '.jpg');
       jpgs.push(new File([blob], name, { type: 'image/jpeg' }));
     }
 
     // 圖片放前面，WhatsApp 的預覽比較好看
-    files = jpgs.concat([new File([pdfBytes.slice()], baseName + '.pdf', { type: 'application/pdf' })]);
+    files = jpgs.concat([new File([pdfBytes.slice()], asciiBase + '.pdf', { type: 'application/pdf' })]);
     dpiUsed = dpi;
     renderFiles();
   }
@@ -197,7 +208,8 @@
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = f.name;
+      // 自己下載時用中文檔名比較好認，只有傳給 WhatsApp 的才需要純英數
+      a.download = (f.type === 'application/pdf' ? baseName + '.pdf' : baseName + '.jpg');
       a.textContent = '下載 ' + (f.type === 'application/pdf' ? 'PDF' : '圖片');
       dl.appendChild(a);
 
@@ -217,8 +229,8 @@
       return;
     }
 
-    // ★ 用 POST：未登入的請求打到 /exec 時，查詢參數會在 Google 的轉址中遺失，
-    //   所以票證要放在 body 裡。content-type 用 text/plain 以避開跨網域預檢請求。
+    // 用 POST：未登入的請求打到 /exec 時，查詢參數會在 Google 的轉址中遺失，
+    // 所以票證放在 body 裡。content-type 用 text/plain 以避開跨網域預檢請求。
     let data;
     try {
       const res = await fetch(api, {
@@ -242,6 +254,7 @@
 
     pdfBytes = b64ToBytes(data.pdfB64);
     baseName = data.name || '服務安排表';
+    asciiBase = toAscii(baseName);
     $('text').value = data.text || '';
     $('ready').hidden = false;
 
